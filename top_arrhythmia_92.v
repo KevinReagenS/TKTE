@@ -53,111 +53,157 @@ module top_arrhythmia #(parameter BITSIZE = 16) (
     // First Layer
     // reg signed[BITSIZE*10*92-1:0] w_enc_1;
     // reg signed[BITSIZE*92-1:0] b_enc_1;
-    reg [15:0] w_enc_1 [0:92*10-1];
+    reg [BITSIZE-1:0] w_enc_1 [0:92*10-1];
     wire [BITSIZE*10*92-1:0] w_enc_1_flat;
-    reg [15:0] b_enc_1 [0:91];
+    reg [BITSIZE-1:0] b_enc_1 [0:91];
     wire [BITSIZE*92-1:0] b_enc_1_flat;
 
     // Second Layer
-    reg signed[BITSIZE*92*1-1:0] w_enc_2_mean1;
-    reg signed[BITSIZE*1-1:0] b_enc_2_mean1;
+    reg [BITSIZE-1:0] w_enc_2_mean [0:92*2-1];
+    reg [BITSIZE-1:0] b_enc_2_mean [0:2-1];
+    reg [BITSIZE-1:0] w_enc_2_var [0:92*2-1];
+    reg [BITSIZE-1:0] b_enc_2_var [0:2-1];
 
-    reg signed[BITSIZE*92*1-1:0] w_enc_2_var1;
-    reg signed[BITSIZE*1-1:0] b_enc_2_var1;
+    // reg signed[BITSIZE*92*1-1:0] w_enc_2_mean1;
+    // reg signed[BITSIZE*1-1:0] b_enc_2_mean1;
+    reg [BITSIZE-1:0] w_enc_2_mean1 [0:92*1-1];
+    wire [BITSIZE*1*92-1:0] w_enc_2_mean1_flat;
+    reg [BITSIZE-1:0] b_enc_1b_enc_2_mean1 [0:0];
+    wire [BITSIZE*1-1:0] b_enc_2_mean1_flat;
 
-    reg signed[BITSIZE*92*1-1:0] w_enc_2_mean2;
-    reg signed[BITSIZE*1-1:0] b_enc_2_mean2;
+    // reg signed[BITSIZE*92*1-1:0] w_enc_2_var1;
+    // reg signed[BITSIZE*1-1:0] b_enc_2_var1;
+    reg [BITSIZE-1:0] w_enc_2_var1 [0:92*1-1];
+    wire [BITSIZE*1*92-1:0] w_enc_2_var1_flat;
+    reg [BITSIZE-1:0] b_enc_1b_enc_2_var1 [0:0];
+    wire [BITSIZE*1-1:0] b_enc_2_var1_flat;
 
-    reg signed[BITSIZE*92*1-1:0] w_enc_2_var2;
-    reg signed[BITSIZE*1-1:0] b_enc_2_var2;
+    // reg signed[BITSIZE*92*1-1:0] w_enc_2_mean2;
+    // reg signed[BITSIZE*1-1:0] b_enc_2_mean2;
+    reg [BITSIZE-1:0] w_enc_2_mean2 [0:92*1-1];
+    wire [BITSIZE*1*92-1:0] w_enc_2_mean2_flat;
+    reg [BITSIZE-1:0] b_enc_1b_enc_2_mean2 [0:0];
+    wire [BITSIZE*1-1:0] b_enc_2_mean2_flat;
+
+    // reg signed[BITSIZE*92*1-1:0] w_enc_2_var2;
+    // reg signed[BITSIZE*1-1:0] b_enc_2_var2;
+    reg [BITSIZE-1:0] w_enc_2_var2 [0:92*1-1];
+    wire [BITSIZE*1*92-1:0] w_enc_2_var2_flat;
+    reg [BITSIZE-1:0] b_enc_1b_enc_2_var2 [0:0];
+    wire [BITSIZE*1-1:0] b_enc_2_var2_flat;
 
     // Layer after lambda
-    reg signed[BITSIZE*92*2-1:0] w_enc_3;
-    reg signed[BITSIZE*92-1:0] b_enc_3;
+    // reg signed[BITSIZE*92*2-1:0] w_enc_3;
+    // reg signed[BITSIZE*92-1:0] b_enc_3;
+    reg [BITSIZE-1:0] w_enc_3 [0:92*2-1];
+    wire [BITSIZE*2*92-1:0] w_enc_3_flat;
+    reg [BITSIZE-1:0] b_enc_3 [0:91];
+    wire [BITSIZE*92-1:0] b_enc_3_flat;
 
     // Output layer
-    reg signed[BITSIZE*2*92-1:0] w_enc_4;
-    reg signed[BITSIZE*2-1:0] b_enc_4;
+    // reg signed[BITSIZE*2*92-1:0] w_enc_4;
+    // reg signed[BITSIZE*2-1:0] b_enc_4;
+    reg [BITSIZE-1:0] w_enc_4 [0:92*2-1];
+    wire [BITSIZE*2*92-1:0] w_enc_4_flat;
+    reg [BITSIZE-1:0] b_enc_4 [0:2-1];
+    wire [BITSIZE*2-1:0] b_enc_4_flat;
 
     initial begin
 
-    $readmemb("intermediate_layer_weights.mem", w_enc_1);
-    $readmemb("intermediate_layer_biases.mem", b_enc_1);
+        $readmemb("intermediate_layer_weights.mem", w_enc_1);
+        $readmemb("intermediate_layer_biases.mem", b_enc_1);
 
-    // $readmemb("intermediate_layer_weights.mem", w_enc_2_mean1);
-    // $readmemb("intermediate_layer_biases.mem", b_enc_2_mean1);
+        $readmemb("z_mean_weights.mem", w_enc_2_mean);
+        $readmemb("z_mean_biases.mem", b_enc_2_mean);
 
+        $readmemb("z_var_weights.mem", w_enc_2_var);
+        $readmemb("z_var_biases.mem", b_enc_2_var);
 
+        $readmemb("hidden_classifier_weights.mem", w_enc_3);
+        $readmemb("hidden_classifier_biases.mem", b_enc_3);
 
-w_enc_2_mean1 = {
-16'b1000101101001101,
-16'b1001000101000010,
-16'b1001010010010011,
-16'b0000011111001111,
-16'b1001000000000011,
-16'b1000010000100000
-};
-b_enc_2_mean1 = {
-16'b1000000001000101
-};
-w_enc_2_var1 = {
-16'b0000000001100111,
-16'b1000100101101101,
-16'b1000001110001000,
-16'b1001010101110010,
-16'b1000110110110110,
-16'b1010001101000001
-};
-b_enc_2_var1 = {
-16'b1001100101001010
-};
-w_enc_3 = {
-16'b1000011110110001,
-16'b1000110000001011,
-16'b0000001110011110,
-16'b0000101111001101,
-16'b0001001100000110,
-16'b1000100110011001
-};
-b_enc_3 = {
-16'b0000000101001100,
-16'b0000001000000101,
-16'b1000000111011001,
-16'b0000001110110110,
-16'b0000010100010001,
-16'b0000000110011101
-};
-w_enc_4 = {
-16'b0000011011101011,
-16'b1000100001010010,
-16'b0000000101101011,
-16'b1000011100111010,
-16'b1000000110001000,
-16'b1000010000101101,
-16'b1000011110001010,
-16'b0000111000010011,
-16'b1000001110110000,
-16'b0000110111010000,
-16'b0000011111001110,
-16'b1000001110001010
-};
-b_enc_4 = {
-16'b1000010011110011,
-16'b0000010011110011
-};
-
+        $readmemb("classifier_output_weights.mem", w_enc_4);
+        $readmemb("classifier_output_biases.mem", b_enc_4);
 
     end
 
+
+    // Encoder 1
     generate
-        for (i = 0; i < 92*10; i = i + 1) begin : flatten_w_enc
+        for (i = 0; i < 92*10; i = i + 1) begin : flatten_w1_enc
             assign w_enc_1_flat[i*16 +: 16] = w_enc_1[i];
         end
     endgenerate
 
     generate
-        for (i = 0; i < 92; i = i + 1) begin : flatten_b_enc
+        for (i = 0; i < 92; i = i + 1) begin : flatten_b1_enc
             assign b_enc_1_flat[i*16 +: 16] = b_enc_1[i];
+        end
+    endgenerate
+
+    // Encoder 2
+    // Pertama
+    generate
+        for (i = 0; i < 92; i = i + 1) begin : flatten_w2_encmean1
+            assign w_enc_2_mean1_flat[i*16 +: 16] = w_enc_2_mean[i];
+        end
+    endgenerate
+
+    generate
+        for (i = 0; i < 1; i = i + 1) begin : flatten_b2_encmean1
+            assign b_enc_2_mean1_flat[i*16 +: 16] = b_enc_2_mean[i];
+        end
+    endgenerate
+
+    generate
+        for (i = 0; i < 92; i = i + 1) begin : flatten_w2_encvar1
+            assign w_enc_2_var1_flat[i*16 +: 16] = w_enc_2_var[i];
+        end
+    endgenerate
+
+    generate
+        for (i = 0; i < 1; i = i + 1) begin : flatten_b2_encvar1
+            assign b_enc_2_var1_flat[i*16 +: 16] = b_enc_2_var[i];
+        end
+    endgenerate
+
+    // Kedua
+    generate
+        for (i = 92; i < 92*2-1; i = i + 1) begin : flatten_w2_encmean2
+            assign w_enc_2_mean2_flat[i*16 +: 16] = w_enc_2_mean[i];
+        end
+    endgenerate
+
+    generate
+        for (i = 92; i < 92*2-1; i = i + 1) begin : flatten_w2_encvar2
+            assign w_enc_2_var2_flat[i*16 +: 16] = w_enc_2_var[i];
+        end
+    endgenerate
+
+
+    // Encoder 3
+    generate
+        for (i = 0; i < 92*2; i = i + 1) begin : flatten_w3_enc
+            assign w_enc_3_flat[i*16 +: 16] = w_enc_3[i];
+        end
+    endgenerate
+
+    generate
+        for (i = 0; i < 92; i = i + 1) begin : flatten_b3_enc
+            assign b_enc_3_flat[i*16 +: 16] = b_enc_3[i];
+        end
+    endgenerate
+
+    // Encoder 4
+    generate
+        for (i = 0; i < 92*2; i = i + 1) begin : flatten_w4_enc
+            assign w_enc_4_flat[i*16 +: 16] = w_enc_4[i];
+        end
+    endgenerate
+
+    generate
+        for (i = 0; i < 2; i = i + 1) begin : flatten_b4_enc
+            assign b_enc_4_flat[i*16 +: 16] = b_enc_4[i];
         end
     endgenerate
 
@@ -242,8 +288,8 @@ b_enc_4 = {
         .clk(clk),
         .reset(enc2_start),
         .x(softplus_enc_1_out_reg),
-        .w(w_enc_2_mean1),
-        .b(b_enc_2_mean1),
+        .w(w_enc_2_mean1_flat),
+        .b(b_enc_2_mean1_flat),
         .y(enc_2_mean1_out)
     );
 
@@ -254,8 +300,8 @@ b_enc_4 = {
         .clk(clk),
         .reset(enc2_start),
         .x(softplus_enc_1_out_reg),
-        .w(w_enc_2_var1),
-        .b(b_enc_2_var1),
+        .w(w_enc_2_var1_flat),
+        .b(b_enc_2_var1_flat),
         .y(enc_2_var1_out)
     );
 
@@ -264,8 +310,8 @@ b_enc_4 = {
         .clk(clk),
         .reset(enc2_start),
         .x(softplus_enc_1_out_reg),
-        .w(w_enc_2_mean2),
-        .b(b_enc_2_mean2),
+        .w(w_enc_2_mean2_flat),
+        .b(b_enc_2_mean2_flat),
         .y(enc_2_mean2_out)
     );
 
@@ -276,8 +322,8 @@ b_enc_4 = {
         .clk(clk),
         .reset(enc2_start),
         .x(softplus_enc_1_out_reg),
-        .w(w_enc_2_var2),
-        .b(b_enc_2_var2),
+        .w(w_enc_2_var2_flat),
+        .b(b_enc_2_var2_flat),
         .y(enc_2_var2_out)
     );
 
@@ -318,8 +364,8 @@ b_enc_4 = {
         .clk(clk),
         .reset(enc3_start),
         .x(lambda_out),
-        .w(w_enc_3),
-        .b(b_enc_3),
+        .w(w_enc_3_flat),
+        .b(b_enc_3_flat),
         .y(enc_3_out)
     );
 
@@ -368,8 +414,8 @@ b_enc_4 = {
         .clk(clk),
         .reset(enc4_start),
         .x(softplus_enc_3_out_reg),
-        .w(w_enc_4),
-        .b(b_enc_4),
+        .w(w_enc_4_flat),
+        .b(b_enc_4_flat),
         .y(enc_4_out)
     );
     wire [BITSIZE*2-1:0] enc_4_out_reverse; 
