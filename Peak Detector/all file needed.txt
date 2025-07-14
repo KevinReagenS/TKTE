@@ -1,0 +1,376 @@
+file filter.v
+module bandpass_filter #(
+    parameter N = 31  // Filter length
+)(
+    input wire clk,
+    input wire rst,
+    input wire signed [15:0] signal_in,      // Q1.15
+    output reg signed [31:0] signal_out      // Q2.30
+);
+    // FIR Coefficients (Q1.15 format)
+    reg signed [15:0] coeffs[0:N-1];
+    initial begin
+        coeffs[0]  = -16'sd39;
+        coeffs[1]  = -16'sd26;
+        coeffs[2]  =  16'sd27;
+        coeffs[3]  =  16'sd83;
+        coeffs[4]  =  16'sd84;
+        coeffs[5]  =  16'sd4;
+        coeffs[6]  = -16'sd132;
+        coeffs[7]  = -16'sd217;
+        coeffs[8]  = -16'sd141;
+        coeffs[9]  =  16'sd132;
+        coeffs[10] =  16'sd476;
+        coeffs[11] =  16'sd629;
+        coeffs[12] =  16'sd446;
+        coeffs[13] = -16'sd58;
+        coeffs[14] = -16'sd726;
+        coeffs[15] = -16'sd1126;
+        coeffs[16] = -16'sd726;
+        coeffs[17] = -16'sd58;
+        coeffs[18] =  16'sd446;
+        coeffs[19] =  16'sd629;
+        coeffs[20] =  16'sd476;
+        coeffs[21] =  16'sd132;
+        coeffs[22] = -16'sd141;
+        coeffs[23] = -16'sd217;
+        coeffs[24] = -16'sd132;
+        coeffs[25] =  16'sd4;
+        coeffs[26] =  16'sd84;
+        coeffs[27] =  16'sd83;
+        coeffs[28] =  16'sd27;
+        coeffs[29] = -16'sd26;
+        coeffs[30] = -16'sd39;
+    end
+
+    // Shift register untuk delay line
+    reg signed [15:0] delay_line[0:N-1];
+    integer i;
+
+    reg signed [31:0] acc;
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            for (i = 0; i < N; i = i + 1)
+                delay_line[i] <= 0;
+            signal_out <= 0;
+        end else begin
+            // Geser delay line
+            for (i = N-1; i > 0; i = i - 1)
+                delay_line[i] <= delay_line[i-1];
+            delay_line[0] <= signal_in;
+
+            // Multiply-accumulate (MAC)
+            acc = 0;
+            for (i = 0; i < N; i = i + 1)
+                acc = acc + delay_line[i] * coeffs[i];
+
+            signal_out <= acc;
+        end
+    end
+endmodule
+
+
+file metrics.v
+module metrics #(
+    parameter N = 8
+)(
+    input wire clk,
+    input wire rst,
+    input wire new_rr_valid,
+    input wire [15:0] rr_interval_in,  // RR in samples (e.g., 100 = 1 sec)
+    output reg [15:0] mean_rr,
+    output reg [31:0] sdnn,
+    output reg [31:0] rmssd
+);
+    reg [15:0] rr_buf[0:N-1];
+    reg [3:0] count;
+    reg [31:0] sum_rr, sum_sq_diff;
+    reg [15:0] last_rr;
+
+    integer i;
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            count <= 0;
+            sum_rr <= 0;
+            sum_sq_diff <= 0;
+            last_rr <= 0;
+            mean_rr <= 0;
+            sdnn <= 0;
+            rmssd <= 0;
+            for (i = 0; i < N; i = i + 1) rr_buf[i] <= 0;
+        end else if (new_rr_valid) begin
+            // Add new value
+            rr_buf[count] <= rr_interval_in;
+            sum_rr <= sum_rr + rr_interval_in;
+            
+            // RMSSD: squared diff from previous RR
+            if (count != 0) begin
+                if (rr_interval_in > last_rr)
+                    sum_sq_diff <= sum_sq_diff + (rr_interval_in - last_rr) * (rr_interval_in - last_rr);
+                else
+                    sum_sq_diff <= sum_sq_diff + (last_rr - rr_interval_in) * (last_rr - rr_interval_in);
+            end
+
+            last_rr <= rr_interval_in;
+            count <= count + 1;
+
+            if (count == N-1) begin
+                // Compute Mean RR
+                mean_rr <= sum_rr / N;
+
+                // Compute SDNN (using Welford’s or simple method offline)
+                // For now, placeholder
+                sdnn <= sum_sq_diff / N;
+
+                // RMSSD = sqrt(mean of squared diffs)
+                rmssd <= $clog2(sum_sq_diff / (N-1));  // Simple integer sqrt placeholder
+                // You can plug in a real sqrt IP here for better precision
+
+                // Reset for next cycle
+                sum_rr <= 0;
+                sum_sq_diff <= 0;
+                count <= 0;
+            end
+        end
+    end
+endmodule
+
+file peak_detector.v
+module peak_detector (
+    input clk,
+    input rst,
+    input signed [15:0] signal_in,    
+    input [15:0] threshold,
+    output reg peak_detected
+);
+
+    // Buffer 3 sample: x(k-1), x(k), x(k+1)
+    reg signed [15:0] x_minus1, x_curr, x_plus1;
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            x_minus1 <= 0;
+            x_curr   <= 0;
+            x_plus1  <= 0;
+            peak_detected <= 0;
+        end else begin
+            // Shift register
+            x_minus1 <= x_curr;
+            x_curr   <= x_plus1;
+            x_plus1  <= signal_in;
+
+            if ((x_curr > x_minus1) && (x_curr > x_plus1) && (x_curr > threshold)) begin
+                peak_detected <= 1;
+            end else begin
+                peak_detected <= 0;
+            end
+        end
+    end
+
+endmodule
+
+file rr_internal_timer.v
+module rr_interval_timer (
+    input wire clk,
+    input wire rst,
+    input wire peak_detected,
+    output reg [31:0] rr_interval
+);
+
+    reg [31:0] counter;
+    reg peak_detected_d;       // untuk mendeteksi rising edge
+    reg [31:0] last_peak;
+
+    wire peak_rising_edge;
+    assign peak_rising_edge = peak_detected & ~peak_detected_d;
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            counter <= 0;
+            last_peak <= 0;
+            rr_interval <= 0;
+            peak_detected_d <= 0;
+        end else begin
+            peak_detected_d <= peak_detected;
+
+            counter <= counter + 1;
+
+            if (peak_rising_edge) begin
+                rr_interval <= counter - last_peak;
+                last_peak <= counter;
+            end
+        end
+    end
+endmodule
+
+file top_level.v
+`include "filter.v"
+`include "metrics.v"
+`include "peak_detector.v"
+`include "rr_interval_timer.v"
+
+module top_level(
+    input clk,
+    input rst,
+    input [15:0] ecg_in,        // Gunakan input ini!
+    input ecg_valid,            // Gunakan valid signal ini!
+    input [15:0] threshold,
+    output [15:0] mean_rr,
+    output [31:0] sdnn,
+    output [31:0] rmssd,
+    output peak_out
+);
+
+    // Hapus bagian "Internal ECG sample generator"
+    
+    // Tambahkan register untuk menyimpan input ECG yang valid
+    reg signed [15:0] ecg_sample;
+    
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            ecg_sample <= 16'd0;
+        end else if (ecg_valid) begin
+            ecg_sample <= ecg_in;  // Simpan input ECG yang valid
+        end
+    end
+
+    //----------------------------
+    // Stage 1: Bandpass Filtering
+    //----------------------------
+    wire signed [31:0] filtered_signal;
+    
+    bandpass_filter filter_inst (
+        .clk(clk),
+        .rst(rst),
+        .signal_in(ecg_sample),  // Gunakan data ECG dari input
+        .signal_out(filtered_signal)
+    );
+    
+    wire signed [15:0] filtered_signal_scaled = filtered_signal[30:15];
+    
+    // Sisanya tetap sama...
+    
+    //----------------------------
+    // Stage 2: Peak Detection
+    //----------------------------
+    wire peak_detected;
+
+    peak_detector peak_det_inst (
+        .clk(clk),
+        .rst(rst),
+        .signal_in(filtered_signal_scaled),
+        .threshold(threshold),
+        .peak_detected(peak_detected)
+    );
+
+    assign peak_out = peak_detected;
+
+    //----------------------------
+    // Stage 3: RR Interval Timer
+    //----------------------------
+    wire [31:0] rr_interval;
+
+    rr_interval_timer rr_timer_inst (
+        .clk(clk),
+        .rst(rst),
+        .peak_detected(peak_detected),
+        .rr_interval(rr_interval)
+    );
+
+    //----------------------------
+    // Stage 4: Metrics Computation
+    //----------------------------
+    wire [15:0] rr_interval_short = rr_interval[15:0];
+
+    metrics metrics_inst (
+        .clk(clk),
+        .rst(rst),
+        .new_rr_valid(peak_detected),
+        .rr_interval_in(rr_interval_short),
+        .mean_rr(mean_rr),
+        .sdnn(sdnn),
+        .rmssd(rmssd)
+    );
+
+    always @(posedge clk) begin
+        if (peak_detected) begin
+            $display("Time: %t | PEAK DETECTED! RR Interval = %d", $time, rr_interval);
+        end
+    end
+
+endmodule
+
+file top_level_tb.v
+`timescale 1ns/1ps
+`include "top_level.v"
+
+module top_level_tb;
+    reg [15:0] data_mem [0:1799];  // Asumsikan maksimal 1800 sampel
+    reg [15:0] ecg_in;             // Ubah nama variable untuk konsistensi dengan top_level
+    reg ecg_valid;                 // Tambahkan signal ecg_valid
+    integer i;
+    reg clk;
+    reg rst;
+    wire [15:0] mean_rr;
+    wire [31:0] sdnn;
+    wire [31:0] rmssd;
+    wire peak_detected;
+    reg [15:0] threshold;
+
+    // Instantiate the top-level module
+    top_level uut (
+        .clk(clk),
+        .rst(rst),
+        .ecg_in(ecg_in),          // Disesuaikan dengan nama port di top_level
+        .ecg_valid(ecg_valid),     // Disesuaikan dengan nama port di top_level
+        .threshold(threshold),
+        .mean_rr(mean_rr),
+        .sdnn(sdnn),
+        .rmssd(rmssd),
+        .peak_out(peak_detected)
+    );
+
+    // Clock generation
+    always #5 clk = ~clk; // 100 MHz
+    
+    // Data feeding logic
+    always @(posedge clk) begin
+        if (!rst) begin
+            ecg_in <= data_mem[i];
+            ecg_valid <= 1;        // Set valid high when sending data
+            if (i < 1799)
+                i <= i + 1;
+            else
+                i <= 0;           // Option: loop back or stop simulation
+        end else begin
+            ecg_valid <= 0;       // No valid data during reset
+        end
+    end
+
+    initial begin
+        // Read ECG data from file
+        $readmemb("ecg_data.txt", data_mem); // Change to $readmemh if your data is in hex format
+        i = 0;
+
+        $display("--- Starting ECG Peak Detection Simulation ---");
+        $dumpfile("top_level_tb.vcd");
+        $dumpvars(0, top_level_tb);
+
+        // Init
+        clk = 0;
+        rst = 1;
+        ecg_valid = 0;
+        threshold = 16'b0000000000000001;
+  // Adjust threshold based on your ECG data amplitude
+
+        #20 rst = 0;
+
+        // Run simulation for longer time to process enough ECG data
+        #20000;
+
+        $display("--- Simulation Done ---");
+        $finish;
+    end
+
+endmodule
